@@ -17,8 +17,8 @@ The vault is split across two places, and neither one is enough on its own.
 - **The iPod holds only ciphertext.** `vault/vault.age` is a single
   [age](https://age-encryption.org) file. The iPod is a plain FAT32 drive with
   no key on it, so whoever finds it has an encrypted blob.
-- **The host holds only the key.** The age private key (and its public
-  recipient) are items in the gnome-keyring login collection
+- **The host holds only the key.** The age private key and its public
+  recipient are items in the gnome-keyring login collection
   (`service=ipod-vault`), created by `install.sh`. Without the iPod there is
   nothing to decrypt.
 - **No decrypted vault file is ever written.** `vault` decrypts into a pipe or
@@ -50,12 +50,13 @@ cd ~/Projects/ipod-vault
 ```
 
 `~/bin` has to be on your `PATH`. `install.sh` is safe to re-run; it keeps an
-existing key. Back the key up
-right away ([`docs/SECURITY.md`](docs/SECURITY.md#back-up-your-key)): if the
-keyring item is lost, the vault cannot be decrypted.
+existing key. Back the key up right away
+([`docs/SECURITY.md`](docs/SECURITY.md#back-up-your-key)): if the keyring item
+is lost, the vault cannot be decrypted.
 
 Give the iPod's FAT32 data partition the filesystem label `IPOD` (for example
-`sudo fatlabel /dev/sdX2 IPOD`), plug it in and run `vault`. It mounts the partition at `/mnt/ipod`, decrypts and opens the picker.
+`sudo fatlabel /dev/sdX2 IPOD`), plug it in and run `vault`. It mounts the
+partition at `/mnt/ipod`, decrypts and opens the picker.
 
 ### The picker
 
