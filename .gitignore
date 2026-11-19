@@ -1,0 +1,12 @@
+# never commit secrets or key material
+*.age
+*.backup
+age-identity*
+*.key
+key.txt
+# vault data
+passwords.txt
+vault/
+# editor / os
+*.swp
+.DS_Store
