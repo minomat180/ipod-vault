@@ -21,8 +21,6 @@
 
 <code>git clone https://github.com/minomat180/ipod-vault && cd ipod-vault && ./install.sh</code>
 
-<br><br>
-
 <img src="docs/demo/demo.gif" alt="vault ls, the fzf picker and a password piped into a command, run against a throwaway demo vault" width="1000">
 
 <sub>Recorded against a throwaway vault from <a href="docs/demo/setup.sh"><code>docs/demo/setup.sh</code></a>: a fresh age key and five fake entries in a temp directory.</sub>
