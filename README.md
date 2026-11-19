@@ -9,7 +9,7 @@
 
 ### age-encrypted passwords on an iPod, key on the host
 
-**Your passwords live on a removable iPod as age ciphertext. You open them in an fzf picker, and a coding agent can pipe one into a command without it reaching the transcript.**
+**Keeps your passwords on a removable iPod as age ciphertext, opens them in an fzf picker, and lets a coding agent pipe one into a command without it reaching the transcript.**
 
 [![License](https://img.shields.io/github/license/minomat180/ipod-vault?style=flat-square&color=a371f7)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%C2%B7%20Wayland-a371f7?style=flat-square)](#quick-start)
@@ -19,7 +19,7 @@
 
 [Quick start](#quick-start) · [Usage](#usage) · [Agent recipes](#agent-recipes) · [How it works](#how-it-works) · [Security and limits](#security-and-limits)
 
-<code>git clone https://github.com/minomat180/ipod-vault && cd ipod-vault && ./install.sh</code>
+<code>git clone https://github.com/minomat180/ipod-vault && ./ipod-vault/install.sh</code>
 
 <img src="docs/demo/demo.gif" alt="vault ls, the fzf picker and a password piped into a command, run against a throwaway demo vault" width="1000">
 
@@ -44,7 +44,7 @@ Bash with no daemon and no state besides those two things.
   shell variable, edits rows with `awk`, and re-encrypts to a temp file on the
   iPod that is renamed over `vault.age`. A copied password is cleared from the
   Wayland clipboard after 45 seconds.
-- **Agents get a pipe, not a value.** A coding agent (I use Claude Code) runs
+- **Agents get the password only through a pipe.** A coding agent (I use Claude Code) runs
   `vault decrypt`, picks one row with `awk` and pipes the password into the one
   command that needs it, so the value is not in the transcript or in any
   process's argv.
@@ -60,21 +60,21 @@ Bash with no daemon and no state besides those two things.
 
 ## Quick start
 
-| Needs | |
+| Needs | Detail |
 | --- | --- |
 | OS | Linux with a Wayland session |
 | Secret Service | gnome-keyring, unlocked at login |
-| Packages | `age`, `libsecret` (`secret-tool`), `fzf`, `wl-clipboard`, `libnotify`, `util-linux` |
+| Packages | `age`, `libsecret` (`secret-tool`), `fzf`, `wl-clipboard`, `libnotify`, `util-linux`; `dosfstools` for `fatlabel` |
 | Rights | `sudo` for `mkdir`, `mount` and `umount` |
 
 ```bash
-git clone https://github.com/minomat180/ipod-vault ~/Projects/ipod-vault
-cd ~/Projects/ipod-vault
-./install.sh    # checks dependencies, creates the age key in the keyring,
-                # links vault and genpass.sh into ~/bin
+git clone https://github.com/minomat180/ipod-vault
+./ipod-vault/install.sh    # checks dependencies, creates the age key in the keyring,
+                           # links vault and genpass.sh into ~/bin
 ```
 
-`~/bin` has to be on your `PATH`. `install.sh` is safe to re-run; it keeps an
+The `~/bin` links point into the clone, so keep it where it is, and `~/bin` has
+to be on your `PATH`. `install.sh` is safe to re-run; it keeps an
 existing key.
 
 > [!IMPORTANT]
@@ -108,7 +108,7 @@ vault add web/example     # add; offers a generated 32-character password
 vault edit web/example
 vault rm web/example
 vault get web/example     # copy the password (--user: username, --show: print both)
-vault import < rows.tsv   # add label<TAB>user<TAB>pass rows; same label replaces
+some-export | vault import  # label<TAB>user<TAB>pass rows from a pipe; same label replaces
 vault decrypt             # plaintext to stdout, for pipes
 vault mount
 vault umount
@@ -205,7 +205,7 @@ web/example    demo-user   ...         2026-08-25
 
 ## Security and limits
 
-It holds my own passwords. It is a personal tool, not a product.
+It holds my own passwords, and I maintain it for my own setup.
 
 > [!WARNING]
 > **No protection against code running as you.** While the keyring is
@@ -213,14 +213,13 @@ It holds my own passwords. It is a personal tool, not a product.
 > without a prompt. With an identity file instead of the keyring, the same
 > holds for anything that can read that file.
 
-> [!WARNING]
-> **Decrypted data is in memory, and memory is not sealed.** Bash variables can
-> be paged to an unencrypted swap partition. wl-copy keeps a copied password in
-> a temp file under `$TMPDIR` (or `/tmp`) until the clipboard is cleared, so
-> `/tmp` should be a tmpfs. A clipboard history manager may keep its own copy.
-
+- **Decrypted data is in memory, and memory is not sealed.** Bash variables can
+  be paged to an unencrypted swap partition. wl-copy keeps a copied password in
+  a temp file under `$TMPDIR` (or `/tmp`) until the clipboard is cleared, so
+  `/tmp` should be a tmpfs. A clipboard history manager may keep its own copy.
 - **Linux only.** Mounting uses `blkid` and `findmnt`, copying uses
-  `wl-clipboard`. On macOS I read the vault with `age` and an identity file.
+  `wl-clipboard`. On macOS I read the vault with `age` and an identity file, which is a plain
+  key file on disk, so the warning above applies to it.
 - **No sync, no history.** There is one `vault.age`; back it up yourself.
 - **No automated tests.** The scripts pass `shellcheck` and were checked by
   hand against the demo vault.
