@@ -19,8 +19,8 @@
 #   IPOD_VAULT_IDENTITY  age identity file instead of the gnome-keyring item
 #
 # Storage: <mount>/vault/vault.age, age ciphertext only. The age private key
-# lives in gnome-keyring, never on the iPod. Plaintext exists only in pipes and
-# shell variables; nothing decrypted is written to disk.
+# lives in gnome-keyring, never on the iPod. The decrypted vault exists only in
+# pipes and shell variables; it is never written to a file.
 set -euo pipefail
 
 MP="${IPOD_VAULT_MOUNT:-/mnt/ipod}"
@@ -64,6 +64,9 @@ ensure_mounted() {
 }
 
 do_umount() {
+    if [ -n "${IPOD_VAULT_DIR:-}" ]; then
+        msg "IPOD_VAULT_DIR is set; nothing to unmount."; return 0
+    fi
     if mountpoint -q "$MP"; then
         sync; sudo umount "$MP" && msg "iPod safely unmounted - OK to unplug."
     else
@@ -141,7 +144,11 @@ cmd_add() {
     if [ -z "$label" ]; then read -rp "label (e.g. web/github): " label </dev/tty; fi
     [ -z "$label" ] && { err "label required."; exit 1; }
 
-    if [ -n "$(find_row "$label")" ]; then
+    # Decrypt once, up front: if it fails, set -e stops here, before anything
+    # is re-encrypted over vault.age.
+    local plain; plain="$(decrypt)"
+
+    if [ -n "$(printf '%s\n' "$plain" | awk -F'\t' -v l="$label" 'NF>=4 && $1==l')" ]; then
         warn "'$label' already exists - editing it instead."
         cmd_edit "$label"
         return 0
@@ -152,7 +159,7 @@ cmd_add() {
     msg "Password for $label:"
     pw="$(read_password_choice)"
 
-    { decrypt; printf '%s\t%s\t%s\t%s\n' "$label" "$user" "$pw" "$(date +%F)"; } | encrypt_stdin
+    { printf '%s\n' "$plain"; printf '%s\t%s\t%s\t%s\n' "$label" "$user" "$pw" "$(date +%F)"; } | encrypt_stdin
     copy_clear "$pw"
     msg "Added '$label' (user: ${user:-none})."
 }

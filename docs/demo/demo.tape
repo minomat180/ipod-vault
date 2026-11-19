@@ -17,7 +17,7 @@ Enter
 Sleep 1s
 Show
 
-Type "# the iPod holds one file, and it is age ciphertext"
+Type "# the vault directory on the iPod: one file of age ciphertext"
 Enter
 Type "ls ipod/vault && head -c 60 ipod/vault/vault.age; echo"
 Enter
@@ -56,3 +56,7 @@ Sleep 3s
 Type "genpass.sh -l 24 -n 2"
 Enter
 Sleep 3s
+
+Hide
+Type `cd - >/dev/null && rm -rf "$DEMO"`
+Enter

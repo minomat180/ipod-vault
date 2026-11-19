@@ -6,7 +6,7 @@
 #
 #   -l LENGTH   password length (default 32), or word count with -w (default 6)
 #   -n COUNT    how many passwords to generate (default 1)
-#   -s          simple mode: alnum only, no symbols (still strong, easier to type)
+#   -s          simple mode: letters and digits only, no symbols
 #   -w          wordlist/passphrase mode instead of char-based password
 #   -p PRESET   use a named preset (overrides -l/-s/-w defaults, can still be
 #               combined with -n). Presets:
@@ -26,7 +26,7 @@ MODE="full"   # full | simple | phrase | pin
 
 usage() {
     grep '^#' "$0" | sed -n '2,19p' | sed 's/^# \{0,1\}//'
-    exit 1
+    exit "${1:-1}"
 }
 
 apply_preset() {
@@ -52,7 +52,7 @@ while getopts ":l:n:p:swh" opt; do
         s) MODE="simple" ;;
         w) MODE="phrase" ;;
         p) apply_preset "$OPTARG" ;;
-        h) usage ;;
+        h) usage 0 ;;
         *) usage ;;
     esac
 done

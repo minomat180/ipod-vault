@@ -6,15 +6,12 @@
 #   2. generate an age keypair and store the PRIVATE key in gnome-keyring
 #      (never on the iPod) if one does not already exist
 #   3. symlink bin/ scripts into ~/bin
-#   4. migrate an existing plaintext passwords.txt on the iPod, if present
 #
 # It never writes plaintext passwords to disk and never puts the key on the iPod.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SVC="ipod-vault"
-MP="/mnt/ipod"
-VDIR="$MP/vault"
 BINDIR="$HOME/bin"
 
 say() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -35,8 +32,13 @@ pgrep -x gnome-keyring-d >/dev/null 2>&1 || pgrep -f gnome-keyring-daemon >/dev/
     || warn "No gnome-keyring daemon detected; a Secret Service provider must be running."
 
 # 2. age keypair in keyring -------------------------------------------------
-if secret-tool lookup service "$SVC" key recipient >/dev/null 2>&1; then
+if secret-tool lookup service "$SVC" key age-identity >/dev/null 2>&1; then
     say "age identity already present in gnome-keyring; keeping it"
+    if ! secret-tool lookup service "$SVC" key recipient >/dev/null 2>&1; then
+        say "Recipient missing; deriving it from the identity"
+        age-keygen -y <(secret-tool lookup service "$SVC" key age-identity) \
+            | secret-tool store --label="$SVC recipient" service "$SVC" key recipient
+    fi
 else
     say "Generating age keypair (private key -> gnome-keyring, never the iPod)"
     umask 077
@@ -58,15 +60,5 @@ mkdir -p "$BINDIR"
 for f in genpass.sh vault; do
     ln -sf "$HERE/bin/$f" "$BINDIR/$f"
 done
-
-# 4. migrate legacy plaintext ----------------------------------------------
-if [ -f "$VDIR/passwords.txt" ] && mountpoint -q "$MP"; then
-    say "Found legacy plaintext $VDIR/passwords.txt — encrypting it"
-    recipient="$(secret-tool lookup service "$SVC" key recipient)"
-    age -r "$recipient" -o "$VDIR/vault.age" "$VDIR/passwords.txt"
-    shred -n 3 "$VDIR/passwords.txt" 2>/dev/null || true
-    rm -f "$VDIR/passwords.txt"
-    say "Migrated to $VDIR/vault.age and removed the plaintext"
-fi
 
 say "Done. Connect the iPod and run:  vault"
