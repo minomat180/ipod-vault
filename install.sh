@@ -6,8 +6,7 @@
 #   2. generate an age keypair and store the PRIVATE key in gnome-keyring
 #      (never on the iPod) if one does not already exist
 #   3. symlink bin/ scripts into ~/bin
-#   4. print the mango keybindings to add (does not edit your config)
-#   5. migrate an existing plaintext passwords.txt on the iPod, if present
+#   4. migrate an existing plaintext passwords.txt on the iPod, if present
 #
 # It never writes plaintext passwords to disk and never puts the key on the iPod.
 set -euo pipefail
@@ -24,12 +23,12 @@ warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 # 1. dependencies -----------------------------------------------------------
 say "Checking dependencies"
 missing=()
-for c in age age-keygen secret-tool wl-copy notify-send wofi blkid; do
+for c in age age-keygen secret-tool fzf wl-copy notify-send blkid findmnt column; do
     command -v "$c" >/dev/null 2>&1 || missing+=("$c")
 done
 if [ "${#missing[@]}" -gt 0 ]; then
     warn "Missing: ${missing[*]}"
-    warn "On Void: sudo xbps-install -S age libsecret wl-clipboard libnotify wofi util-linux"
+    warn "Packages: age, libsecret, fzf, wl-clipboard, libnotify, util-linux"
     exit 1
 fi
 pgrep -x gnome-keyring-d >/dev/null 2>&1 || pgrep -f gnome-keyring-daemon >/dev/null 2>&1 \
@@ -56,15 +55,11 @@ fi
 # 3. link scripts into ~/bin ------------------------------------------------
 say "Linking scripts into $BINDIR"
 mkdir -p "$BINDIR"
-for f in genpass.sh genpass-copy vault; do
+for f in genpass.sh vault; do
     ln -sf "$HERE/bin/$f" "$BINDIR/$f"
 done
 
-# 4. keybindings ------------------------------------------------------------
-say "Add these to ~/.config/mango/config.conf (then: mmsg dispatch reload_config)"
-cat "$HERE/docs/mango-keybinds.conf"
-
-# 5. migrate legacy plaintext ----------------------------------------------
+# 4. migrate legacy plaintext ----------------------------------------------
 if [ -f "$VDIR/passwords.txt" ] && mountpoint -q "$MP"; then
     say "Found legacy plaintext $VDIR/passwords.txt — encrypting it"
     recipient="$(secret-tool lookup service "$SVC" key recipient)"

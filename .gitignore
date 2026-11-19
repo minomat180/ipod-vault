@@ -1,12 +1,17 @@
-# never commit secrets or key material
+# never commit secrets, key material or ciphertext
 *.age
 *.backup
+*.bak
+*.bak-*
 age-identity*
+recipient.txt
 *.key
 key.txt
-# vault data
+# vault data, plaintext exports
 passwords.txt
+*.tsv
 vault/
+.ipod-vault/
 # editor / os
 *.swp
 .DS_Store

@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# genpass.sh - generate extremely strong passwords
+# genpass.sh - generate random passwords and passphrases
 #
 # Usage:
 #   genpass.sh [-l LENGTH] [-n COUNT] [-s] [-w] [-p PRESET]
 #
-#   -l LENGTH   password length (default 32)
+#   -l LENGTH   password length (default 32), or word count with -w (default 6)
 #   -n COUNT    how many passwords to generate (default 1)
 #   -s          simple mode: alnum only, no symbols (still strong, easier to type)
 #   -w          wordlist/passphrase mode instead of char-based password
 #   -p PRESET   use a named preset (overrides -l/-s/-w defaults, can still be
 #               combined with -n). Presets:
-#                 paypal   20 chars, safe symbol subset (PayPal's 20-char cap)
+#                 paypal   20 chars, safe symbol subset (sites capped at 20)
 #                 short20  20 chars, safe symbol subset (generic short-max sites)
 #                 pin      6 digits, numeric only
 #                 simple16 16 chars, alnum only
 #               List presets: genpass.sh -p list
 #
-# Uses /dev/urandom via openssl for CSPRNG. No shell $RANDOM anywhere.
+# Randomness comes from /dev/urandom (read with od). No shell $RANDOM anywhere.
 
 set -euo pipefail
 
-LENGTH=32
+LENGTH=""
 COUNT=1
 MODE="full"   # full | simple | phrase | pin
 
@@ -32,7 +32,7 @@ usage() {
 apply_preset() {
     case "$1" in
         list)
-            echo "paypal   20 chars, safe symbols (PayPal's 20-char max)"
+            echo "paypal   20 chars, safe symbols (sites capped at 20)"
             echo "short20  20 chars, safe symbols (generic short-max sites)"
             echo "pin      6 digits, numeric only"
             echo "simple16 16 chars, alnum only"
@@ -57,7 +57,7 @@ while getopts ":l:n:p:swh" opt; do
     esac
 done
 
-# Full charset: upper, lower, digits, symbols (avoids ambiguous chars? no - max entropy, keep all)
+# Full charset: all 94 printable ASCII characters except space.
 CHARSET_FULL='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!"#$%&'"'"'()*+,-./:;<=>?@[\]^_`{|}~'
 CHARSET_SIMPLE='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 # Safe subset: no quotes/backslash/backtick/angle-brackets/whitespace-adjacent
@@ -106,6 +106,8 @@ gen_phrase() {
     echo "${out[*]}-${sep}"
     unset IFS
 }
+
+if [ "$MODE" != "phrase" ]; then LENGTH="${LENGTH:-32}"; fi
 
 for _ in $(seq 1 "$COUNT"); do
     case "$MODE" in
