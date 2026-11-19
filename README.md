@@ -1,182 +1,194 @@
 # ipod-vault
 
-A **portable, encrypted password vault on a removable iPod**, with a terminal
-browser for humans and a pipe-only recipe that lets a coding agent (Claude
-Code) *use* a password without ever *seeing* it.
+A password vault for one person on Linux: an age-encrypted file on a removable
+iPod, opened from a terminal with an fzf picker, and usable by a coding agent
+through a pipe so that the password stays out of the agent's transcript.
 
-- **Encrypted at rest.** The iPod holds only `vault.age` (age ciphertext). The
-  private key lives in your login keyring, never on the iPod. Lose the iPod and
-  the finder gets nothing.
-- **fzf browser.** `vault` mounts the iPod, decrypts in RAM, lists entries, and
-  copies a password (or username) to the clipboard with a 45-second auto-clear.
-- **Agent use.** Claude Code decrypts into a pipe that feeds one command; the
-  value never reaches the transcript, argv or a file (see "Agents" below).
-- **Strong password generator** using `/dev/urandom` with modulo-rejection
-  sampling (no bias, no `$RANDOM`).
+![vault ls, the fzf picker and a password piped into a command, run against a throwaway demo vault](docs/demo/demo.gif)
 
-Built for [mino's setup](#assumptions) (Void Linux + mango compositor), but the
-pieces are portable to any Wayland/libsecret system.
+The recording uses a throwaway vault built by
+[`docs/demo/setup.sh`](docs/demo/setup.sh): a fresh age key and five fake
+entries in a temp directory.
 
----
+## Why it is built this way
 
-## How it works
+The vault is split across two places, and neither one is enough on its own.
 
-```
-            ┌─────────────── your laptop ───────────────┐
-            │                                            │
-  vault ──▶ (fzf browser)                                 │
-            │   │ decrypt in /dev/shm (RAM)              │
-            │   ▼                                        │
- gnome-keyring: age private key ──┐                      │
-            │                     │ age -d               │
-            │                     ▼                      │
-            │            plaintext (RAM only)            │
-            │                     ▲                      │
-            │                     │ age -r (re-encrypt)  │
-            └─────────────────────┼──────────────────────┘
-                                  │
-                        ┌─────────▼─────────┐
-                        │   iPod (FAT32)    │
-                        │  vault/vault.age  │  <-- only ciphertext ever touches the iPod
-                        └───────────────────┘
-```
+- **The iPod holds only ciphertext.** `vault/vault.age` is a single
+  [age](https://age-encryption.org) file. The iPod is a plain FAT32 drive with
+  no key on it, so whoever finds it has an encrypted blob.
+- **The host holds only the key.** The age private key and its public
+  recipient are items in the gnome-keyring login collection
+  (`service=ipod-vault`), created by `install.sh`. Without the iPod there is
+  nothing to decrypt.
+- **No decrypted vault file is ever written.** `vault` decrypts into a pipe or
+  a shell variable, edits the rows with `awk`, and re-encrypts to a temp file
+  on the iPod that is renamed over `vault.age`. A copied password goes to the
+  Wayland clipboard and is cleared after 45 seconds.
+- **Agents get a pipe, not a value.** A coding agent (I use Claude Code) runs
+  `vault decrypt`, picks one row with `awk` and pipes the password into the one
+  command that needs it, so the value is not in the agent's transcript or in
+  any process's argv.
 
-An agent uses the same `vault decrypt` path (or `age -d` on a copy of
-`vault.age`), picks one entry with `awk`, and pipes the password straight into
-the one command that needs it.
+The last point is a convention, not a mechanism. Nothing redacts output: an
+agent that pipes the password into `cat` has leaked it. What the design gets
+you, and what it does not, is spelled out in
+[`docs/SECURITY.md`](docs/SECURITY.md).
 
-## Layout
+## Run it
 
-```
-bin/
-  genpass.sh     strong password / passphrase generator
-  genpass-copy   generate -> clipboard (+ auto-clear); used by the menu
-  vault          the fzf browser + mount/decrypt/encrypt CLI
-docs/
-  SECURITY.md    threat model, key backup/restore
-  mango-keybinds.conf
-install.sh       idempotent setup (keyring keypair, symlinks, migration)
-```
-
-## Install
+Requirements: Linux with a Wayland session and a running Secret Service
+(gnome-keyring), plus `age`, `secret-tool` (libsecret), `fzf`, `wl-clipboard`,
+`libnotify` and `util-linux`. Mounting runs `sudo mkdir`, `sudo mount` and
+`sudo umount`, so the user needs sudo rights for those.
 
 ```bash
-# not a git repo; copy the folder to ~/Projects/ipod-vault
+git clone https://github.com/minomat180/ipod-vault ~/Projects/ipod-vault
 cd ~/Projects/ipod-vault
-./install.sh          # deps check, age keypair -> keyring, ~/bin symlinks
+./install.sh    # checks dependencies, creates the age key in the keyring,
+                # links vault and genpass.sh into ~/bin
 ```
 
-Then add the keybindings it prints to `~/.config/mango/config.conf` and reload:
+`~/bin` has to be on your `PATH`. `install.sh` is safe to re-run; it keeps an
+existing key. Back the key up right away
+([`docs/SECURITY.md`](docs/SECURITY.md#back-up-your-key)): if the keyring item
+is lost, the vault cannot be decrypted.
+
+Give the iPod's FAT32 data partition the filesystem label `IPOD` (for example
+`sudo fatlabel /dev/sdX2 IPOD`), plug it in and run `vault`. It mounts the
+partition at `/mnt/ipod`, decrypts and opens the picker.
+
+### The picker
+
+| Key     | Action                                        |
+|---------|-----------------------------------------------|
+| enter   | copy the password, clear the clipboard in 45s |
+| alt-u   | copy the username                             |
+| alt-e   | edit the entry                                |
+| alt-d   | delete the entry (asks first)                 |
+| alt-a   | add an entry (generated or typed password)    |
+| esc     | quit                                          |
+
+### Commands
 
 ```bash
-mmsg dispatch reload_config
+vault                     # the picker
+vault ls                  # labels, usernames and dates; never passwords
+vault add web/example     # add; offers a generated 32-character password
+vault edit web/example
+vault rm web/example
+vault get web/example     # copy the password (--user: username, --show: print both)
+vault import < rows.tsv   # add label<TAB>user<TAB>pass rows; same label replaces
+vault decrypt             # plaintext to stdout, for pipes
+vault mount
+vault umount
 ```
 
-### Dependencies
+The iPod tends to come back as a different `/dev/sdX` after a replug; `vault`
+finds it by label and replaces a stale mount instead of failing.
 
-`age`, `secret-tool` (libsecret) + a running Secret Service (gnome-keyring),
-`wl-clipboard`, `libnotify`, `fzf`, `util-linux` (`blkid`/`findmnt`).
+Four environment variables change where things are, which is how the demo runs
+without an iPod or a keyring:
 
-## Usage
+| Variable              | Default         | Purpose                                       |
+|-----------------------|-----------------|-----------------------------------------------|
+| `IPOD_VAULT_MOUNT`    | `/mnt/ipod`     | mount point                                   |
+| `IPOD_VAULT_LABEL`    | `IPOD`          | filesystem label to look for                  |
+| `IPOD_VAULT_DIR`      | `<mount>/vault` | use this directory; skips mounting            |
+| `IPOD_VAULT_IDENTITY` | keyring item    | age identity file instead of the keyring      |
 
-### The browser (`vault`)
+### Agent recipes
 
-- Pick an entry -> **Copy password** / **Copy username** / **Show both**
-- **Add new entry** -> label, username, then auto-generate or type a password
-- **Unmount iPod** -> safe eject
-
-The menu auto-mounts the iPod by its `IPOD` filesystem label and **heals stale
-mounts** (the iPod often reappears as a different `/dev/sdX` after re-plugging).
-
-### CLI
+The rules an agent follows: list labels freely; a password only ever travels
+through a pipe into one command (on stdin, or as an environment variable set
+inside `sh -c`); never print, echo, store or encode it. The `awk` below exits
+non-zero when the label does not exist, so with `set -o pipefail` a mistyped
+label shows up as a failed pipeline instead of passing silently. The agent's own
+permission prompt is the only approval step, so it says which entry it reads
+and why before it runs the command.
 
 ```bash
-vault            # open the menu
-vault mount      # mount (auto-detect by label, heal stale mount)
-vault umount     # safe unmount before unplugging
-vault decrypt    # print the decrypted vault to stdout (RAM only)
+# list labels
+vault decrypt | awk -F'\t' 'NF>=4 && $1!~/^#/ {print $1}'
+
+# one password into one command on stdin
+vault decrypt \
+  | awk -F'\t' -v l=web/example '$1==l {p=$3} END {if (p=="") exit 1; printf "%s", p}' \
+  | some-cli login --password-stdin
+
+# one password as an environment variable, never in argv
+vault decrypt \
+  | awk -F'\t' -v l=db/staging '$1==l {p=$3} END {if (p=="") exit 1; printf "%s", p}' \
+  | sh -c 'PGPASSWORD=$(cat) psql -h db.example.internal -U app -c "select 1"'
 ```
+
+On a machine without the iPod, a copy of `vault.age` and an identity file work
+the same way: `age -d -i <identity> vault.age` replaces `vault decrypt`.
 
 ### Password generator
 
-```bash
-genpass.sh                # 32-char, full symbol set (~209 bits)
-genpass.sh -l 20 -n 3     # three 20-char passwords
-genpass.sh -s -l 24       # alnum only (sites that reject symbols)
-genpass.sh -w -l 5        # 5-word passphrase (needs a wordlist)
-genpass.sh -p paypal      # 20 chars, safe symbol subset (PayPal's 20-char cap)
-genpass.sh -p list        # list all named presets
-```
-
-### Agents (Claude Code)
-
-There is no agent plugin: Claude Code uses the vault through the shell, under
-two rules. A secret only ever travels through a pipe into the one command that
-needs it (stdin, or an environment variable set inside `sh -c '...'`), and the
-agent never prints, echoes, stores or base64s it. Labels and usernames are fine
-to list. Claude Code's own permission prompt is the only approval step, so an
-agent says which entry it reads and why before it does.
-
-Copies of the ciphertext also live in `~/.ipod-vault/` on mino's machines
-(`vault.age`, and `agent-vault-tokens.json.age`, a JSON object of API tokens).
-The age key is the keyring item on Linux and `~/.ipod-vault/age-identity.txt`
-on the Mac.
+`vault add` uses `bin/genpass.sh`, which also works on its own. Character
+passwords are drawn from `/dev/urandom` with rejection sampling, so every
+character in the set is equally likely. Passphrase mode picks words with a
+plain modulo over 32 random bits (off from uniform by less than one part in
+ten thousand for a wordlist under 400,000 words) and appends a number from 0
+to 99 that is not uniform, so count its strength by the words alone.
 
 ```bash
-# key: Linux <(secret-tool lookup service ipod-vault key age-identity), Mac ~/.ipod-vault/age-identity.txt
-KEY=~/.ipod-vault/age-identity.txt
-
-# list labels (never passwords)
-age -d -i "$KEY" ~/.ipod-vault/vault.age | awk -F'\t' 'NF>=4 && $1!~/^#/{print $1}'
-
-# feed one password to one command on stdin
-age -d -i "$KEY" ~/.ipod-vault/vault.age \
-  | awk -F'\t' -v l=bitwarden '$1==l{p=$3} END{printf "%s", p}' \
-  | some-command --password-stdin
-
-# one API token into one command as an env var
-age -d -i "$KEY" ~/.ipod-vault/agent-vault-tokens.json.age \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["NAME"], end="")' \
-  | sh -c 'TOKEN=$(cat); CLOUDFLARE_API_TOKEN=$TOKEN wrangler whoami'
+genpass.sh                # 32 of the 94 printable ASCII characters (about 210 bits)
+genpass.sh -l 20 -n 3     # three 20-character passwords
+genpass.sh -s -l 24       # letters and digits only
+genpass.sh -p list        # presets: paypal, short20, pin, simple16
+genpass.sh -w             # six-word passphrase (needs /usr/share/dict/words)
 ```
 
-With the iPod attached on Linux, `vault decrypt` replaces the first `age -d`.
-Entries named `pi-vault/<NAME>` are API passwords moved over from the old
-keyring store on 2026-11-12; the names are historical.
+## How it works
 
-## Vault format
-
-Decrypted, the vault is tab-separated:
-
+```text
+  host (Linux)                                 iPod (FAT32, label IPOD)
+  +----------------------------+               +---------------------------+
+  | gnome-keyring              |               | vault/vault.age           |
+  |   age private key          |               |   age ciphertext          |
+  |        |                   |    age -d     |                           |
+  |        v                   | <------------ |   (only vault file)       |
+  | bin/vault                  |               |                           |
+  |   plaintext in pipes and   |    age -r     |                           |
+  |   shell variables only     | ------------> | temp file, renamed over   |
+  |                            |               | vault.age                 |
+  +----------------------------+               +---------------------------+
 ```
-# label        username   password   date
-web/github     me@x.com   ...        2026-08-25
+
+Decrypted, the vault is a tab-separated file, one entry per line:
+
+```text
+# label        username    password    date
+web/example    demo-user   ...         2026-08-25
 ```
 
-## Security
+Everything is Bash: `bin/vault` (about 300 lines) is the CLI and picker,
+`bin/genpass.sh` the generator, `install.sh` the setup. There is no daemon
+and no state besides `vault.age` and the keyring item.
 
-Short version: **theft-safe and no plaintext at rest**, and secrets stay out of
-AI transcripts and process listings. It is **not** a hardware-enforced boundary —
-while your keyring is unlocked, anything with your shell access can decrypt the
-file. Read [`docs/SECURITY.md`](docs/SECURITY.md) before trusting it with
-anything critical, and **back up your key** (instructions there).
+## Status and limits
 
-## Assumptions
+It holds my own passwords. It is a personal tool, not a product:
 
-- **OS:** Void Linux (glibc). **Compositor:** mango (Wayland). **Shell:** bash.
-- The iPod's data partition is FAT32 and labeled `IPOD`, mounted at `/mnt/ipod`.
-- Passwordless `sudo` for `mount`/`umount` (so the menu can mount from a keybind).
-
-Adjust `MP`, `LABEL`, and the paths at the top of `bin/vault` for other setups.
-
-## History
-
-Until 2026-11-19 this folder also held a TypeScript extension for the pi coding
-agent (`ipod_vault_use` / `ipod_vault_list` tools with an approval dialog and a
-Capri approval prompt). mino now uses only Claude Code, so it was removed; a
-copy is in `~/Backups/pi-removal-20261119/ipod-vault/pi-extension/` on both
-machines.
+- **No protection against code running as you.** While the keyring is unlocked,
+  any process of your user can read the key and decrypt the vault without a
+  prompt. With an identity file instead of the keyring, the same holds for
+  anything that can read that file.
+- **Decrypted data is in memory, and memory is not sealed.** Bash variables
+  can be paged to an unencrypted swap partition. wl-copy keeps a copied
+  password in a temp file under `$TMPDIR` (or `/tmp`) until the clipboard is
+  cleared, so `/tmp` should be a tmpfs. A clipboard history manager may keep
+  its own copy.
+- **Linux only.** Mounting uses `blkid` and `findmnt`, copying uses
+  `wl-clipboard`. On macOS I read the vault with `age` and an identity file.
+- **No sync, no history.** There is one `vault.age`; back it up yourself.
+- **No automated tests.** The scripts pass `shellcheck` and were checked by
+  hand against the demo vault.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). Encryption is [age](https://github.com/FiloSottile/age)
+by Filippo Valsorda; the picker is [fzf](https://github.com/junegunn/fzf).
